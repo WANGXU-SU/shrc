@@ -1,0 +1,84 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "dns": {
+    "hosts": {
+      "dns.google": "8.8.8.8",
+      "cloudflare-dns.com": "1.1.1.1",
+      "dns.alidns.com": "223.5.5.5",
+      "doh.pub": "1.12.12.12"
+    },
+    "servers": [
+      {
+        "address": "https+local://dns.alidns.com/dns-query",
+        "domains": ["geosite:cn"],
+        "expectIPs": ["geoip:cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https+local://doh.pub/dns-query",
+        "domains": ["geosite:cn"],
+        "expectIPs": ["geoip:cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https://cloudflare-dns.com/dns-query",
+        "domains": ["geosite:geolocation-!cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https://dns.google/dns-query",
+        "domains": ["geosite:geolocation-!cn"],
+        "skipFallback": true
+      }
+    ],
+    "queryStrategy": "UseIPv4",
+    "disableCache": false,
+    "disableFallback": false,
+    "disableFallbackIfMatch": true,
+    "tag": "dns"
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["dns-in"],
+        "outboundTag": "dns-out"
+      },
+      {
+        "type": "field",
+        "protocol": ["bittorrent"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "domain": ["geosite:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "ip": ["geoip:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "domain": ["geosite:geolocation-!cn"],
+        "outboundTag": "proxy"
+      }
+    ]
+  },
+  "_comment": [
+    "v2rayNG/Xray DNS 防泄露与国内外分流模板，不提供广告过滤。",
+    "YouTube App 广告无法靠此 DNS/路由模板可靠移除。",
+    "需要将现有 VLESS 节点对应的 outbound tag 设为 proxy，或合并到 v2rayNG 自定义配置。",
+    "国外 DoH 需要命中 proxy 路由。",
+    "queryStrategy=UseIPv4 用于降低 IPv6 DNS/路由旁路风险。"
+  ]
+}
