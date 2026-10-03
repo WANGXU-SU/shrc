@@ -1,0 +1,84 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "dns": {
+    "hosts": {
+      "dns.google": "8.8.8.8",
+      "cloudflare-dns.com": "1.1.1.1",
+      "dns.alidns.com": "223.5.5.5",
+      "doh.pub": "1.12.12.12"
+    },
+    "servers": [
+      {
+        "address": "https+local://dns.alidns.com/dns-query",
+        "domains": ["geosite:cn"],
+        "expectIPs": ["geoip:cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https+local://doh.pub/dns-query",
+        "domains": ["geosite:cn"],
+        "expectIPs": ["geoip:cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https://cloudflare-dns.com/dns-query",
+        "domains": ["geosite:geolocation-!cn"],
+        "skipFallback": true
+      },
+      {
+        "address": "https://dns.google/dns-query",
+        "domains": ["geosite:geolocation-!cn"],
+        "skipFallback": true
+      }
+    ],
+    "queryStrategy": "UseIPv4",
+    "disableCache": false,
+    "disableFallback": false,
+    "disableFallbackIfMatch": true,
+    "tag": "dns"
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["dns-in"],
+        "outboundTag": "dns-out"
+      },
+      {
+        "type": "field",
+        "protocol": ["bittorrent"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "domain": ["geosite:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "ip": ["geoip:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "domain": ["geosite:geolocation-!cn"],
+        "outboundTag": "proxy"
+      }
+    ]
+  },
+  "_comment": [
+    "这是 v2rayNG/Xray DNS+路由模板，不包含你的机场/节点参数。",
+    "需要把你现有节点对应的 outbound tag 设为 proxy，或将这些 DNS/路由项合并到 v2rayNG 自定义配置。",
+    "国外 DoH 必须确保其连接命中 proxy 路由，才能避免本地出口直接查询。",
+    "queryStrategy=UseIPv4 用于避免 IPv6 DNS/路由旁路；如果需要 IPv6，请自行改为 UseIP 并同步配置 IPv6 路由。",
+    "Android Private DNS 建议设为自动/关闭，避免它绕开 Xray DNS；具体取决于 v2rayNG VPN 模式和版本。"
+  ]
+}
