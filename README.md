@@ -15,9 +15,8 @@ https://raw.githubusercontent.com/WANGXU-SU/shrc/refs/heads/main/shrc-revised.co
 - 路由遵循“先阻断、再分流”：国内域名（`.cn`、`China_Domain.list`、`China.list`）、微信/QQ、B站及常见银行/支付直连（`DIRECT`），`GEOIP,CN,DIRECT` 作 IP 兜底，其余一律走强制代理（`FINAL` 无 `DIRECT` 回退）。
 - Claude 官方核心域名、`claude.list` 远程规则集，以及安装、更新、插件常用的 GitHub/npm/pypi/Google Storage 等依赖，在直连规则前强制走 `🧠 Claude Code` 组。两个代理组均只有 `PROXY` 和 `REJECT`，不含 `DIRECT`，也不自动轮换出口。完整官方网络要求：https://code.claude.com/docs/en/network-config 。
 - DNS 与流量分流绑定：代理域名与备用 DNS 均使用经代理隧道的 Cloudflare/Google DoH（`#proxy`）；直连域名与节点启动解析使用阿里 IP 形式 DoH（`223.5.5.5`/`223.6.6.6`），且 `dns-direct-fallback-proxy = false` 禁止直连域名回退到代理 DNS。关闭系统 DNS 及其回退，劫持 IPv4 明文 DNS。
-- HTTPDNS 分情况处理：放行美团、京东、微信、B站、微博、网易云音乐等国内直连服务的 HTTPDNS 以避免回退卡顿，其余未知 HTTPDNS 通过 `BlockHttpDNS.list` 拦截。
 - IPv6 禁用并增加拒绝规则；拒绝应用 IPv4 UDP 任意端口，封锁 TCP 53/853、常见 STUN/TURN 端口（3478/5349/19302）及未知 `stun.`/`turn.` 域名（海外 AI 语音与主流通讯域名在前置走代理隧道以保证可用性）；私网 IP 段在本机直接 `REJECT`。
-- 保留现有 YouTube 去广告重写和脚本；未将 Claude 域名加入 MITM。
+- 移除所有去广告重写、脚本、MITM 解密及 `BlockHttpDNS.list` 拦截，避免干扰国内 App（如美团酒店、地图定位等）的正常解析与加载。
 
 ## 导入后必须检查
 
@@ -36,24 +35,6 @@ https://raw.githubusercontent.com/WANGXU-SU/shrc/refs/heads/main/shrc-revised.co
 - WebRTC 的本地候选地址、任意端口的 TCP TURN 或指向 CN IP 的自定义服务无法仅靠这些网络规则彻底覆盖；浏览器支持时应禁用 WebRTC/非代理 ICE。若要保证任何应用绝不暴露真实公网 IP，就不能同时无条件允许其 CN 连接直连。
 - 配置约束只对经过 Shadowrocket 的流量有效。手机 VPN 不自动代理电脑/WSL，也不保证热点客户端流量经过隧道。Claude Code 在电脑运行时，需要该电脑自己的 HTTP 代理设置或 TUN；官方支持 HTTP_PROXY/HTTPS_PROXY，不支持 SOCKS URL。自定义 ANTHROPIC_BASE_URL、第三方模型网关及 MCP 服务需另加其实际域名的强制代理规则。
 - 隧道关闭、崩溃或系统绕过 VPN 时，“宁愿断网也不直连”需要 App/系统阻断或运行 Claude Code 的设备防火墙共同实现；配置文件无法单独提供系统级 kill switch。
-
-## YouTube 去广告
-
-适用于 iOS YouTube / YouTube Music App 的接口响应处理，不承诺浏览器网页端或所有 App 版本均有效。v2rayNG 的 JSON 文件仅提供 DNS/路由配置，不执行这些去广告脚本。
-
-YouTube 去广告依赖 HTTPS 解密。导入配置后，需要在 Shadowrocket 中生成/安装 MITM CA 证书并在 iOS 中设为信任，否则脚本不会生效。
-
-配置已覆盖 `youtubei.googleapis.com` 和 `youtubei-att.googleapis.com` 两个 API 主机。后者也可能被 YouTube App 使用。
-
-排查顺序：
-
-1. 从上面的 `shrc-revised.conf` 地址重新导入并选中配置；旧的 `shrc.conf` 与 `Shadowrocket.conf` 地址已停用。
-2. 确认 HTTPS 解密已开启，CA 证书已安装，并在 iOS「设置 → 通用 → 关于本机 → 证书信任设置」中开启该证书的完全信任。
-3. 更新 Shadowrocket 的外部脚本资源，彻底退出 YouTube 后重新打开。
-4. 查看请求/脚本日志：`youtubei.googleapis.com` 或 `youtubei-att.googleapis.com` 的 `/youtubei/v1/player` 等响应应命中 `youtube.response`；若没有命中，先排查证书、QUIC、其他模块覆盖和实际请求主机。
-5. 若脚本已命中但仍有广告，记录 Shadowrocket / YouTube 版本、广告类型和脚本错误日志。上游脚本基于 Surge 测试，不保证 Shadowrocket 或所有 YouTube 版本的兼容性。
-
-不要为了去广告直接拒绝整个 `googlevideo.com`，否则正常视频也可能无法播放。
 
 ## 说明
 
