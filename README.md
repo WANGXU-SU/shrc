@@ -1,6 +1,6 @@
 # shrc
 
-个人 iOS **Shadowrocket** 常开配置，目标是在**长期开启代理**的前提下兼顾**国内高速直连**、**App 流量 DNS 不泄露**与 **Claude 独立固定出口**。
+个人 iOS **Shadowrocket** 常开配置，目标是在**长期开启代理**的前提下兼顾**国内高速直连**、**DNS 不泄露**与 **Claude 独立固定出口**。
 
 ## 快速导入
 
@@ -25,9 +25,9 @@ https://raw.githubusercontent.com/WANGXU-SU/shrc/refs/heads/main/shrc-revised.co
 
 ```mermaid
 flowchart TD
-    Start["设备出站流量"] --> SysCheck{"系统进程? (如 APNs 推送)"}
-    SysCheck -- "是 · bypass-system = true" --> SysDirect["绕过隧道 · 系统直连"]
-    SysCheck -- "否 · App 流量 (127.0.0.0/8 除外)" --> Tun["进入 Shadowrocket TUN"]
+    Start["设备出站流量 (bypass-system = false · 含系统进程)"] --> LoopCheck{"127.0.0.0/8 本机回环?"}
+    LoopCheck -- "是 · tun-excluded-routes" --> Loopback["本机回环直连"]
+    LoopCheck -- "否 · App 与系统流量" --> Tun["进入 Shadowrocket TUN (模块可对 %APPEND% 域名 MITM)"]
 
     Tun --> L1Block{"第 1 层 · 基础阻断 (hijack-dns 已接管 *:53)"}
     L1Block -- "IPv6 ::/0 · 端口 53 / 853" --> OutReject["REJECT (拒绝出网)"]
@@ -64,7 +64,7 @@ DNS 解析与流量去向严格绑定，所有配置均使用 **IP 字面量 DoH
 
 ```mermaid
 flowchart LR
-    Query["App 域名/端口 53 查询"] --> Hijack["hijack-dns = *:53 本地接管 (未接管 53/853 直接 REJECT)"]
+    Query["域名 / 端口 53 查询"] --> Hijack["hijack-dns = *:53 本地接管 (未接管 53/853 直接 REJECT)"]
 
     Hijack --> RouteMatch{"按规则判断解析路径"}
     RouteMatch -- "节点自身域名启动解析" --> ProxyBootstrap["proxy-dns-server: 阿里 223.5.5.5 / 223.6.6.6 + 腾讯 1.12.12.12 (直连 DoH)"]
@@ -95,15 +95,15 @@ flowchart LR
 
 | 参数 | 当前值 | 设计意图 |
 | --- | --- | --- |
-| `bypass-system` | `true` | 让 iOS 系统进程（如 APNs 推送）走系统直连，减少后台耗电与推送延迟 |
-| `skip-proxy` | `localhost,127.0.0.1` | 仅保留回环直连，不跳过苹果/银行/私网，避免绕过本机额外启用的小火箭模块或脚本 |
-| `tun-excluded-routes` | `127.0.0.0/8` | 仅排除回环段，局域网流量仍经过规则表处理以兼容本机脚本与模块 |
+| `bypass-system` | `false` | 不绕过系统进程：防止系统 DNS 泄露，并确保 `locationd` 等系统请求经过小火箭（兼容 `wloc` 等模块） |
+| `skip-proxy` | `localhost,127.0.0.1` | 仅保留回环直连，不跳过苹果/银行/私网，避免绕过本机额外启用的小火箭模块或脚本（如 `wloc`） |
+| `tun-excluded-routes` | `127.0.0.0/8` | 仅排除回环段，局域网与系统流量仍经过规则表处理以兼容本机脚本与模块（如 `wloc`） |
 | `ipv6` / `prefer-ipv6` | `false` / `false` | 禁用 IPv6 解析与优先，配合 `IP-CIDR6,::/0,REJECT` 防止 IPv6 旁路泄露 |
 | `private-ip-answer` | `false` | 拒绝 DNS 返回私网 IP（防投毒）；目前内网服务建议通过纯 IP 访问，或自行改为 `true`/写 `[Host]` |
 | `icmp-auto-reply` | `true` | 自动响应 ping 等 ICMP 测试 |
 | `always-reject-url-rewrite` | `false` | 仅在“配置”路由模式下生效（当前未启用 URL Rewrite） |
 | `udp-policy-not-supported-behaviour` | `REJECT` | 节点不支持 UDP 时直接拒绝而不回退 `DIRECT`；UDP 与 QUIC 按分流正常放行 |
-| `[MITM] enable` | `false` | 关闭 HTTPS 解密，移除所有去广告重写、脚本及 `BlockHttpDNS.list`，避免破坏国内 App（如美团酒店、地图定位） |
+| `[MITM] enable` | `true`（未配置 `hostname`） | 仅保留 HTTPS 解密总开关，主配置自身不解密任何日常 App；避免每次更新配置时覆盖重置开关，供 `wloc` 等外部模块通过 `%APPEND%` 生效 |
 
 ### 2. `[Proxy Group]` 策略组
 
@@ -158,6 +158,7 @@ flowchart LR
    - `🚀 强制代理` 已选中 `PROXY`
 3. **系统与 App 关键开关**：
    - 小火箭 **设置 → UDP → 打开「禁用 STUN」**（当前配置已移除规则层 UDP/STUN 拦截，此开关为 WebRTC 防泄露的核心防线；保持 mDNS 本地地址混淆开启）。
+   - 若使用 `wloc` 等需要 HTTPS 解密的外部模块，请确认已生成并安装 Shadowrocket CA 证书，并在系统 **设置 → 通用 → 关于本机 → 证书信任设置** 中开启完全信任（主配置保持 `[MITM] enable = true` 且 `hostname` 留空，日常不会解密无关 App）。
    - 系统 **设置 → Apple ID → iCloud → Private Relay → 关**，否则 Safari 会绕过小火箭直接出网。
    - 在设备可用时开启系统 VPN 设置中的 **包括所有网络 / Include All Networks**；关闭其他会覆盖本配置 DNS/规则的模块，更新后重启隧道。
 4. **Claude 专项环境**：时区设为 `Los Angeles`、系统语言把 `English` 放第一位。用网页 Stripe 给 Claude 付款、Google 账号登录 Claude 或触发 Cloudflare 人机验证时，如首页当前切在非 DMIT 节点，建议临时切回 DMIT 保持出口 IP 一致。
@@ -171,7 +172,7 @@ flowchart LR
 ## 设计取舍与已知限制
 
 - **静态审查与真机验证**：当前配置逻辑已通过静态核对与远端规则交叉验证，实际设备的 `hijack-dns` 接管顺序、断线无回退及 DLNA/AirPlay 投屏仍需在真机请求日志中实测确认，不能仅凭文本声明“绝对零泄露”。
-- **`bypass-system = true` 边界**：开启系统进程旁路能让推送（APNs）等系统服务走系统直连，更省电且不卡顿；代价是系统自身进程（非 App）的 DNS 查询会走本地网络，DNS 防泄露硬线仅约束经过小火箭的 App 流量。
+- **`bypass-system = false` 与空 `hostname` MITM**：系统守护进程（如 `locationd`）同样进入小火箭，既可保证 `wloc` 虚拟定位等模块正常截获请求，又堵住了系统 DNS 绕过隧道的口子；`[MITM]` 仅开启 `enable = true` 而不写 `hostname`，主配置自身不会解密任何日常 App（不干扰美团、银行等），只保留外部模块通过 `%APPEND%` 挂载的解密规则，防止每次更新配置被重置关闭。
 - **保留最小 `skip-proxy` / `tun-excluded-routes`**：未将 RFC 1918 私网段放进 `tun-excluded-routes`，是为了避免流量绕过小火箭引擎而影响本机额外启用的模块或脚本；局域网与投屏通过第 3 层 `DIRECT` 规则放行，但 `private-ip-answer = false` 仅保障通过纯 IP 访问内网（如需内网域名解析私有 IP，请改为 `true` 或写入 `[Host]`）。若启用 Tailscale，需将 `100.64.0.0/10` 改为 `DIRECT`。
 - **国内 DNS 不向代理回退**：国内直连由阿里 + 腾讯双厂商 DoH 兜底；仅当两家 DoH 同时不可用时国内域名解析直接失败，绝不串到海外代理 DNS。
 - **UDP / WebRTC / 银行 App 限制**：UDP 与 QUIC 按分流放行，WebRTC 防泄露高度依赖小火箭内置「禁用 STUN」与浏览器策略，规则层面无法彻底拦截本地候选地址或指向 CN IP 的任意 TCP TURN。银行 App 虽走 `DIRECT`（解决出口 IP 问题），但本机仍可感知 `utun` VPN 接口存在，极端风控场景需临时关闭小火箭。
@@ -186,4 +187,4 @@ flowchart LR
 | `2026-10-19` | 重构为三层分流架构，绑定国内外分流与 DoH，移除旧版冗余规则与去广告/MITM（后于 `10-20` 彻底清除 `BlockHttpDNS.list` 与 YouTube 重写/脚本） |
 | `2026-10-22` | 放开全局 UDP 与 QUIC（解决手机 QQ 文件传输损坏），WebRTC 防泄露交由小火箭内置「禁用 STUN」承担 |
 | `2026-10-28` | 将 RFC 1918 私网段从 `REJECT` 改为 `DIRECT`，恢复开着 VPN 访问路由器/NAS/内网网关 |
-| `2026-11-21` | 删除废弃配置；新增 `🇺🇸 DMIT 节点` 独立锁定 Claude；移除外部 `claude.list` 与不用的 AI 规则；开启 `bypass-system = true`；接入腾讯 `1.12.12.12` DoH 容灾、`ChinaMedia.list` 与高频国内 App 补漏；前置泄露自测、B 站/爱奇艺国际版（含 `bstar` CDN）；组播/广播改 `DIRECT` |
+| `2026-11-21` | 删除废弃配置；新增 `🇺🇸 DMIT 节点` 独立锁定 Claude；移除外部 `claude.list` 与不用的 AI 规则；保持 `bypass-system = false` 并开启空 `hostname` 的 `[MITM] enable = true`（兼容 `wloc` 虚拟定位）；接入腾讯 `1.12.12.12` DoH 容灾、`ChinaMedia.list` 与高频国内 App 补漏；前置泄露自测、B 站/爱奇艺国际版（含 `bstar` CDN）；组播/广播改 `DIRECT` |
